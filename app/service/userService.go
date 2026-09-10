@@ -30,6 +30,21 @@ func (s *UserService) GetByID(ctx context.Context, id uint) (*model.User, error)
 	return s.repo.GetByID(ctx, id)
 }
 
+func (s *UserService) Login(ctx context.Context, identity, password string) (*model.User, error) {
+	user, err := s.repo.Login(ctx, identity)
+	if err != nil || user == nil{
+		return nil, errors.New("invalid email or password")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil{
+		return nil, errors.New("invalid email or password")
+	}
+
+	user.Password = ""
+	
+	return user, nil
+}
+
 func (s *UserService) RegisterUser(ctx context.Context, name, username, email, password string) (*model.User, error) {
 	// validate password
 	if len(password) < 6 {

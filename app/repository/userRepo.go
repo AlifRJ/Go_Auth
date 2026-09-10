@@ -18,6 +18,21 @@ func NewPostgresUserRepository(db *pgxpool.Pool) model.UserRepository {
 	return &PostgresUserRepository{db: db}
 }
 
+func (r *PostgresUserRepository) Login(ctx context.Context, identity string) (*model.User, error) {
+	query := `SELECT id, name, username, email, password FROM users WHERE username = $1 OR email = $1`
+	
+	var u model.User
+	err := r.db.QueryRow(ctx, query, identity).Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.Password)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("User not found")
+		}
+		return nil, err
+	}
+	
+	return &u, nil
+}
+
 func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {
 	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users ORDER BY id DESC LIMIT $1 OFFSET $2`
 	
@@ -56,7 +71,7 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, id uint) (*model.U
 	err := r.db.QueryRow(ctx, query, id).Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("user tidak ditemukan")
+			return nil, errors.New("User not found")
 		}
 		return nil, err
 	}

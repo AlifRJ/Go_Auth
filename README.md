@@ -1,27 +1,68 @@
-# Go Chi REST API
+# Go REST API Boilerplate
 
-Production-ready RESTful API boilerplate built with Go, the lightweight go-chi router, and jackc/pgx/v5 for high-performance PostgreSQL database operations.
+A ready-to-use Go REST API starter for building secure, production-style backend services with PostgreSQL, JWT authentication, and a clean layered architecture.
+
+This project is designed to be a solid foundation for a full SaaS backend, admin panel API, or internal service.
+
+## Features
+
+- Go HTTP API with Chi router
+- JWT-based authentication and protected routes
+- PostgreSQL database integration using `pgxpool`
+- User management with CRUD-style endpoints
+- Password hashing with `bcrypt`
+- Soft delete and permanent delete support
+- Environment-based configuration via `.env`
+- Clean separation of concerns across handler, service, repository, model, and migration layers
 
 ---
 
-## 🚀 Features
+## Tech Stack
 
-- **Chi Router:** Idiomatic and performant HTTP routing with grouped API versioning (`/v1`).
-- **PostgreSQL + pgx:** High-performance database operations with connection pooling via `pgxpool`.
-- **Soft & Hard Deletion:** Supports both soft-deletes (`deleted_at`) and permanent hard-deletes.
-- **JSON Serialization:** Pre-configured JSON tags hiding sensitive fields like passwords (`json:"-"`).
+- Go
+- Chi Router
+- PostgreSQL
+- pgx
+- JWT (`github.com/go-chi/jwtauth/v5`)
+- bcrypt
+- godotenv
 
 ---
 
-## 🗄️ Database Schema
+## Project Structure
 
-### `users` Table
+```text
+.
+├── main.go
+├── go.mod
+├── go.sum
+├── .env-example
+├── README.md
+├── app/
+│   ├── handler/
+│   │   └── userHandler.go
+│   ├── migration/
+│   │   └── userMigration.go
+│   ├── model/
+│   │   └── user.go
+│   ├── repository/
+│   │   └── userRepo.go
+│   └── service/
+│       └── userService.go
+└──
+```
+
+---
+
+## Database Schema
+
+The application creates the `users` table automatically if it does not already exist.
 
 ```sql
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    username VARCHAR(100) UNIQUE NOT NULL,
+    username VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -32,88 +73,113 @@ CREATE TABLE users (
 
 ---
 
-## 🛠️ Data Model
+## Environment Variables
 
-```go
-type User struct {
-    ID        uint       `json:"id"`
-    Name      string     `json:"name"`
-    Username  string     `json:"username"`
-    Email     string     `json:"email"`
-    Password  string     `json:"-"`
-    Created_at time.Time  `json:"created_at"`
-    Updated_at *time.Time `json:"updated_at"`
-    Deleted_at *time.Time `json:"deleted_at"`
-}
+Create a `.env` file using the example below:
+
+```env
+DB_DATABASE=postgres
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=password
+SECRET_KEY=your-random-64-character-secret-key
 ```
 
----
-
-## 📋 API Endpoints
-
-All routes are prefixed with /v1
-
-| Methods | Endpoint | Description
-| GET | /v1/ping | Health check endpoint
-| GET | /v1/users | Retrieve all users
-| GET | /v1/users/{id} | Retrieve a user by ID
-| POST | /v1/users | Create a new user
-| PUT | /v1/users/{id} | Update an existing user
-| DELETE | /v1/users/{id} | Soft delete a user by ID
-| DELETE | /v1/users-delete/{id} | Permanently delete a user by ID
+A sample is available in `.env-example`.
 
 ---
 
-## ⚙️ Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Go installed (version 1.22 or higher)
-- PostgreSQL instance running locally or remotely
+- Go 1.22+
+- PostgreSQL installed and running
+- A local database accessible on `localhost`
 
 ### Installation
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/AlifRJ/Go_Auth.git
-cd Go_Auth
-```
-
-2. Install dependencies:
 
 ```bash
 go mod download
 ```
 
-3. Configure environment variables
-
-```bash
-DB_DATABASE={postgres}
-DB_PORT={5432}
-DB_USER={postgres}
-DB_PASSWORD={password}
-```
-
-4. Run the application:
+### Run the API
 
 ```bash
 go run main.go
 ```
 
+The server starts on port `8080`.
+
 ---
 
-## 📮 API Payload Examples
+## API Routes
 
-### Health Check (GET /v1/ping)
+All routes are prefixed with `/v1`.
 
-```bash
-PONG!
+### Public Endpoints
+
+| Method | Endpoint    | Description                          |
+| ------ | ----------- | ------------------------------------ |
+| GET    | `/v1/ping`  | Health check                         |
+| POST   | `/v1/login` | Authenticate a user and return a JWT |
+
+### Protected Endpoints
+
+Protected routes require a Bearer token in the `Authorization` header:
+
+```http
+Authorization: Bearer <token>
 ```
 
-### Create User (POST /v1/users)
+| Method | Endpoint                | Description               |
+| ------ | ----------------------- | ------------------------- |
+| GET    | `/v1/users`             | List all users            |
+| GET    | `/v1/users/{id}`        | Get user by ID            |
+| POST   | `/v1/users`             | Create a new user         |
+| PUT    | `/v1/users/{id}`        | Update a user             |
+| DELETE | `/v1/users/{id}`        | Soft delete a user        |
+| DELETE | `/v1/users-delete/{id}` | Permanently delete a user |
 
-Request Body:
+---
+
+## Example: Login
+
+### Request
+
+```http
+POST /v1/login
+Content-Type: application/json
+```
+
+```json
+{
+  "identity": "johndoe",
+  "password": "secretpassword"
+}
+```
+
+### Response
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+Use the returned token as the `Authorization: Bearer <token>` header for protected endpoints.
+
+---
+
+## Example: Create User
+
+### Request
+
+```http
+POST /v1/users
+Authorization: Bearer <token>
+Content-Type: application/json
+```
 
 ```json
 {
@@ -124,7 +190,7 @@ Request Body:
 }
 ```
 
-Response (201 Created):
+### Response
 
 ```json
 {
@@ -132,36 +198,31 @@ Response (201 Created):
   "name": "John Doe",
   "username": "johndoe",
   "email": "john@example.com",
-  "created_at": "2026-09-07T16:30:00Z",
+  "created_at": "2026-09-10T12:00:00Z",
   "updated_at": null,
   "deleted_at": null
 }
 ```
 
-### Update User (PUT /v1/users/1)
+---
 
-Request Body:
+## Notes
 
-```json
-{
-  "name": "Jane H. Doe",
-  "username": "janedoe_updated",
-  "email": "jane.new@example.com"
-}
-```
+- Login accepts either a `username` or `email` in the `identity` field.
+- Passwords are hashed before being stored in the database.
+- Soft delete marks the record with `deleted_at` while preserving the row.
+- Permanent delete removes the record from the database.
 
-Response (201 Created):
+---
 
-```json
-{
-  "id": 1,
-  "name": "Jane H. Doe",
-  "username": "janedoe_updated",
-  "email": "jane.new@example.com",
-  "created_at": "2026-09-07T16:30:00Z",
-  "updated_at": "2026-09-07T16:35:00Z",
-  "deleted_at": null
-}
-```
+## Why Use This Boilerplate?
 
-<FollowUp label="Want me to generate full CRUD handler implementations for Chi and pgx?" query="Generate the full Go HTTP handler implementations for CRUD operations on this User model using Chi router and pgx."/>
+This repository is a practical starting point for developers who want a clean, secure, and extensible Go API foundation without spending time setting up the basic architecture from scratch.
+
+It is especially useful for:
+
+- startup MVPs
+- internal services
+- admin APIs
+- authentication-first applications
+- learning and experimentation

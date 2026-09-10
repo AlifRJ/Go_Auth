@@ -17,6 +17,7 @@ type User struct {
 }
 
 type UserRepository interface {
+	Login(ctx context.Context, identity string) (*User, error)
 	GetAll(ctx context.Context, limit, offset int) ([]*User, error)
 	GetByID(ctx context.Context, id uint) (*User, error)
 	Create(ctx context.Context, user *User) error
