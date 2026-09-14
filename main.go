@@ -72,8 +72,10 @@ func main() {
 	}
 
 	// Open Cache database connection
+	redisHost := os.Getenv("REDIS_HOST")
+	redisPort := os.Getenv("REDIS_PORT")
 	rdb := redis.NewClient(&redis.Options{
-		Addr:		os.Getenv("REDIS_HOST")+":"+os.Getenv("REDIS_PORT"),
+		Addr:		fmt.Sprintf("%s:%s", redisHost, redisPort),
 		Password: 	os.Getenv("REDIS_PASSWORD"),
 		DB:			0,
 	})
@@ -97,13 +99,15 @@ func main() {
 	
 	// Dependency Injection
 	userRepo := repository.NewPostgresUserRepository(db)
-	cachedUserRepo := repository.NewCachedUserRepository(rdb, userRepo, 15*time.Minute)
-	userService := service.NewUserService(cachedUserRepo)
-	userHandler := handler.NewUserHandler(userService, accessTokenAuth)
-	
 	authRepo := repository.NewPostgresAuthRepository(db)
+
+	cachedUserRepo := repository.NewCachedUserRepository(rdb, userRepo, 15*time.Minute)
 	cachedAuthRepo := repository.NewCachedAuthRepository(rdb, authRepo)
-	authService := service.NewAuthService(cachedUserRepo, cachedAuthRepo)
+	
+	userService := service.NewUserService(cachedUserRepo)
+	authService := service.NewAuthService(cachedUserRepo, cachedAuthRepo, accessTokenAuth, refreshTokenAuth)
+	
+	userHandler := handler.NewUserHandler(userService, cachedAuthRepo,accessTokenAuth)
 	authHandler := handler.NewAuthHandler(authService, accessTokenAuth, refreshTokenAuth)
 	
 	// Chi Router & Middlewares
@@ -112,14 +116,17 @@ func main() {
 	// Middleware
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://*", "https://*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
   	}))
 
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
 	// Health Check Route
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {

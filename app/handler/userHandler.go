@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/AlifRJ/Go_Auth/app/middleware"
+	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/AlifRJ/Go_Auth/app/repository"
 	"github.com/AlifRJ/Go_Auth/app/service"
 	"github.com/go-chi/chi/v5"
@@ -13,26 +15,33 @@ import (
 )
 
 type UserHandler struct {
-	service *service.UserService
+	service 		*service.UserService
+	authRepo        model.AuthRepository
 	accessTokenAuth *jwtauth.JWTAuth
 }
 
-func NewUserHandler(s *service.UserService, accessTokenAuth * jwtauth.JWTAuth) *UserHandler {
-	return &UserHandler{service: s, accessTokenAuth: accessTokenAuth}
+func NewUserHandler(s *service.UserService, authRepo model.AuthRepository,accessTokenAuth * jwtauth.JWTAuth) *UserHandler {
+	return &UserHandler{
+		service: 			s, 
+		authRepo:        	authRepo,
+		accessTokenAuth: 	accessTokenAuth,
+	}
 }
 
 // Routes Definition
 func (h *UserHandler) RegisterRoutes(r chi.Router) {
-	r.Route("/v1", func(r chi.Router) {
+	r.Route("/v1/users", func(r chi.Router) {
 		r.Group(func(r chi.Router){
 			r.Use(jwtauth.Verifier(h.accessTokenAuth))
 			r.Use(jwtauth.Authenticator(h.accessTokenAuth))
-			r.Get("/users", h.GetAll)
-			r.Get("/users/{id}", h.GetByID)
-			r.Post("/users", h.Create)
-			r.Put("/users/{id}", h.UpdateUser)
-			r.Delete("/users/{id}", h.DeleteUser)
-			r.Delete("/users-delete/{id}", h.PermanentlyDeleteUser)
+			r.Use(middleware.CheckTokenBlacklist(h.authRepo))
+			
+			r.Get("/", h.GetAll)
+			r.Post("/", h.Create)
+			r.Get("/{id}", h.GetByID)
+			r.Put("/{id}", h.UpdateUser)
+			r.Delete("/{id}", h.DeleteUser)
+			r.Delete("/{id}/permanent", h.PermanentlyDeleteUser)
 		})
 	})
 }
@@ -78,10 +87,10 @@ func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // Register new User
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name  string `json:"name"`
-		Username  string `json:"username"`
-		Email string `json:"email"`
-		Password string `json:"password"`
+		Name  		string `json:"name"`
+		Username  	string `json:"username"`
+		Email 		string `json:"email"`
+		Password 	string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -108,10 +117,10 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name  string `json:"name"`
-		Username  string `json:"username"`
-		Email string `json:"email"`
-		Password string `json:"password"`
+		Name  		string `json:"name"`
+		Username  	string `json:"username"`
+		Email 		string `json:"email"`
+		Password 	string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

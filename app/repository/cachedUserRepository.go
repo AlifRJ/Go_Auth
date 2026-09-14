@@ -17,11 +17,7 @@ type cachedUserRepository struct {
 }
 
 func NewCachedUserRepository(rdb *redis.Client, dbRepo model.UserRepository, ttl time.Duration) model.UserRepository {
-	return &cachedUserRepository{
-		rdb: 		rdb,
-		dbRepo:     dbRepo,
-		cacheTTL:   ttl,
-	}
+	return &cachedUserRepository{rdb: rdb, dbRepo:	dbRepo, cacheTTL: ttl}
 }
 
 // Key formatters
@@ -53,6 +49,18 @@ func (c *cachedUserRepository) GetByID(ctx context.Context, id uint) (*model.Use
 	}
 
 	return user, nil
+}
+
+func (c *cachedUserRepository) GetByEmailOrUsername(ctx context.Context, identifier string) (*model.User, error) {
+	return c.dbRepo.GetByEmailOrUsername(ctx, identifier)
+}
+
+func (c *cachedUserRepository) GetByEmail(ctx context.Context, email string) (*model.User, error) {
+	return c.dbRepo.GetByEmail(ctx, email)
+}
+
+func (c *cachedUserRepository) GetByUsername(ctx context.Context, username string) (*model.User, error) {
+	return c.dbRepo.GetByUsername(ctx, username)
 }
 
 func (c *cachedUserRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {

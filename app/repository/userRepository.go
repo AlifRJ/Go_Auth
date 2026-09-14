@@ -23,7 +23,7 @@ func NewPostgresUserRepository(db *pgxpool.Pool) model.UserRepository {
 }
 
 func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {
-	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users ORDER BY id DESC LIMIT $1 OFFSET $2`
+	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users WHERE deleted_at IS NULL ORDER BY id DESC LIMIT $1 OFFSET $2`
 	
 	rows, err := r.db.Query(ctx, query, limit, offset)
 	if err != nil {
@@ -34,7 +34,7 @@ func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) 
 	users := make([]*model.User, 0)
 	for rows.Next() {
 		var u model.User
-		if err := rows.Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt); err != nil {
 			return nil, fmt.Errorf("scan GetAll row failed: %w", err)
 		}
 		users = append(users, &u)
@@ -48,10 +48,10 @@ func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) 
 }
 
 func (r *PostgresUserRepository) GetByID(ctx context.Context, id uint) (*model.User, error) {
-	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users WHERE id = $1`
+	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users WHERE id = $1 AND deleted_at IS NULL`
 	
 	var u model.User
-	err := r.db.QueryRow(ctx, query, id).Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at)
+	err := r.db.QueryRow(ctx, query, id).Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -70,7 +70,7 @@ func (r *PostgresUserRepository) GetByEmailOrUsername(ctx context.Context, ident
 
 	var u model.User
 	err := r.db.QueryRow(ctx, query, identifier).Scan(
-		&u.ID, &u.Name, &u.Username, &u.Email, &u.Password, &u.Created_at, &u.Updated_at, &u.Deleted_at,
+		&u.ID, &u.Name, &u.Username, &u.Email, &u.Password, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -90,7 +90,7 @@ func (r *PostgresUserRepository) GetByEmail(ctx context.Context, email string) (
 
 	var u model.User
 	err := r.db.QueryRow(ctx, query, email).Scan(
-		&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at,
+		&u.ID, &u.Name, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -110,7 +110,7 @@ func (r *PostgresUserRepository) GetByUsername(ctx context.Context, username str
 
 	var u model.User
 	err := r.db.QueryRow(ctx, query, username).Scan(
-		&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at,
+		&u.ID, &u.Name, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -125,7 +125,7 @@ func (r *PostgresUserRepository) GetByUsername(ctx context.Context, username str
 func (r *PostgresUserRepository) Create(ctx context.Context, user *model.User) error {
 	query := `INSERT INTO users (name, username, email, password) VALUES ($1, $2, $3, $4) RETURNING id, created_at`
 	
-	err := r.db.QueryRow(ctx, query, user.Name, user.Username, user.Email, user.Password).Scan(&user.ID, &user.Created_at)
+	err := r.db.QueryRow(ctx, query, user.Name, user.Username, user.Email, user.Password).Scan(&user.ID, &user.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("create user failed: %w", err)
 	}
@@ -134,7 +134,7 @@ func (r *PostgresUserRepository) Create(ctx context.Context, user *model.User) e
 }
 
 func (r *PostgresUserRepository) Update(ctx context.Context, user *model.User) error {
-	query := `UPDATE users SET name=$1, username=$2, email=$3, password=$4, updated_at=CURRENT_TIMESTAMP WHERE id = $5`
+	query := `UPDATE users SET name=$1, username=$2, email=$3, password=$4, updated_at=CURRENT_TIMESTAMP WHERE id = $5 AND deleted_at IS NULL`
 	
 	tag, err := r.db.Exec(ctx, query, user.Name, user.Username, user.Email, user.Password, user.ID)
 	if err != nil {

@@ -6,14 +6,14 @@ import (
 )
 
 type User struct {
-	ID         uint			`json:"id"`
-	Name       string		`json:"name"`
-	Username   string		`json:"username"`
-	Email      string		`json:"email"`
-	Password   string		`json:"-"`
-	Created_at time.Time	`json:"created_at"`
-	Updated_at *time.Time	`json:"updated_at"`
-	Deleted_at *time.Time	`json:"deleted_at"`
+	ID         uint			`json:"id" db:"id"`
+	Name       string		`json:"name" db:"name"`
+	Username   string		`json:"username" db:"username"`
+	Email      string		`json:"email" db:"email"`
+	Password   string		`json:"-" db:"password"`
+	CreatedAt time.Time	`json:"created_at" db:"created_at"`
+	UpdatedAt *time.Time	`json:"updated_at,omitempty" db:"updated_at"`
+	DeletedAt *time.Time	`json:"deleted_at,omitempty" db:"deleted_at"`
 }
 
 type UserRepository interface {

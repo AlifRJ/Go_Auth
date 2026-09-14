@@ -39,7 +39,7 @@ func (s *UserService) GetByID(ctx context.Context, id uint) (*model.User, error)
 func (s *UserService) RegisterUser(ctx context.Context, name, username, email, password string) (*model.User, error) {
 	// validate password
 	if len(password) < 6 {
-		return nil, errors.New("Password must be 6 character or longer!")
+		return nil, ErrPasswordTooShort
 	}
 
 	if existingUser, _ := s.repo.GetByEmail(ctx, email); existingUser != nil {
@@ -93,7 +93,12 @@ func (s *UserService) UpdateUser(ctx context.Context, id uint, name, username, e
 			return nil, err
 		}
         user.Password = string(hashedPassword) 
-    }
+    } else {
+		existingWithPass, err := s.repo.GetByEmailOrUsername(ctx, user.Email)
+		if err == nil && existingWithPass != nil {
+			user.Password = existingWithPass.Password
+		}
+	}
 
 	if err := s.repo.Update(ctx, user); err != nil {
 		return nil, err
