@@ -12,6 +12,7 @@ var (
 	ErrPasswordTooShort = errors.New("password must be 6 characters or longer")
 	ErrEmailTaken       = errors.New("email is already registered")
 	ErrUsernameTaken    = errors.New("username is already taken")
+	ErrInvalidRequest    = errors.New("Invalid request payload")
 )
 
 type UserService struct {
@@ -37,6 +38,21 @@ func (s *UserService) GetByID(ctx context.Context, id uint) (*model.User, error)
 }
 
 func (s *UserService) RegisterUser(ctx context.Context, name, username, email, password string) (*model.User, error) {
+	// Validate empty request
+	if name == "" || username == "" || email == ""{
+		return nil, ErrInvalidRequest
+	}
+
+	// Validate name
+	if len(name) < 3 {
+		return nil, errors.New("Name is too short")
+	}
+
+	// Validate username
+	if len(username) < 5 {
+		return nil, errors.New("Username must be at least 6 character long")
+	}
+	
 	// validate password
 	if len(password) < 6 {
 		return nil, ErrPasswordTooShort

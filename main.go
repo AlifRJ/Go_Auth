@@ -67,8 +67,6 @@ func main() {
 	// Migrate users table
 	if err := migration.UserMigration(ctx, db); err != nil{
 		log.Fatalf("Failed to create table: %v\n", err)
-	} else{
-		// seeder.UserSeeder(db)
 	}
 
 	// Open Cache database connection
@@ -107,8 +105,8 @@ func main() {
 	userService := service.NewUserService(cachedUserRepo)
 	authService := service.NewAuthService(cachedUserRepo, cachedAuthRepo, accessTokenAuth, refreshTokenAuth)
 	
-	userHandler := handler.NewUserHandler(userService, cachedAuthRepo,accessTokenAuth)
-	authHandler := handler.NewAuthHandler(authService, accessTokenAuth, refreshTokenAuth)
+	userHandler := handler.NewUserHandler(userService, cachedAuthRepo, accessTokenAuth)
+	authHandler := handler.NewAuthHandler(authService, userService, accessTokenAuth, refreshTokenAuth)
 	
 	// Chi Router & Middlewares
 	r := chi.NewRouter()
@@ -165,8 +163,9 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v\n", err)
 	}
 
-	fmt.Println("Server stopped cleanly.")
+	fmt.Println("Closing database and cache connections...")
+	db.Close()
+	rdb.Close()
 
-	// fmt.Println("Running on port: 8080")
-	// http.ListenAndServe(":8080", r)
+	fmt.Println("Server stopped cleanly.")
 }
