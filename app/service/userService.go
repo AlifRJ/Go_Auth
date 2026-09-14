@@ -8,6 +8,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var (
+	ErrPasswordTooShort = errors.New("password must be 6 characters or longer")
+	ErrEmailTaken       = errors.New("email is already registered")
+	ErrUsernameTaken    = errors.New("username is already taken")
+)
+
 type UserService struct {
 	repo model.UserRepository
 }
@@ -30,25 +36,17 @@ func (s *UserService) GetByID(ctx context.Context, id uint) (*model.User, error)
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *UserService) Login(ctx context.Context, identity, password string) (*model.User, error) {
-	user, err := s.repo.Login(ctx, identity)
-	if err != nil || user == nil{
-		return nil, errors.New("invalid email or password")
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil{
-		return nil, errors.New("invalid email or password")
-	}
-
-	user.Password = ""
-	
-	return user, nil
-}
-
 func (s *UserService) RegisterUser(ctx context.Context, name, username, email, password string) (*model.User, error) {
 	// validate password
 	if len(password) < 6 {
 		return nil, errors.New("Password must be 6 character or longer!")
+	}
+
+	if existingUser, _ := s.repo.GetByEmail(ctx, email); existingUser != nil {
+		return nil, ErrEmailTaken
+	}
+	if existingUser, _ := s.repo.GetByUsername(ctx, username); existingUser != nil {
+		return nil, ErrUsernameTaken
 	}
 
 	// Hash Password
@@ -70,23 +68,26 @@ func (s *UserService) UpdateUser(ctx context.Context, id uint, name, username, e
 		return nil, err
 	}
 
-	// Check if Field is Empty
 	if name != "" {
-        user.Name = name
-    }
-    if username != "" {
-        user.Username = username
-    }
-    if email != "" {
-        user.Email = email
-    }
+		user.Name = name
+	}
+	if username != "" && username != user.Username {
+		if existing, _ := s.repo.GetByUsername(ctx, username); existing != nil {
+			return nil, ErrUsernameTaken
+		}
+		user.Username = username
+	}
+	if email != "" && email != user.Email {
+		if existing, _ := s.repo.GetByEmail(ctx, email); existing != nil {
+			return nil, ErrEmailTaken
+		}
+		user.Email = email
+	}
     if password != "" {
-        // Validate Password
 		if len(password) < 6 {
-			return nil, errors.New("Password must be 6 character or longer!")
+			return nil, ErrPasswordTooShort
 		}
 
-		// Hash Password
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
 			return nil, err

@@ -10,6 +10,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var (
+	ErrUserNotFound = errors.New("user not found")
+)
+
 type PostgresUserRepository struct {
 	db *pgxpool.Pool
 }
@@ -18,49 +22,28 @@ func NewPostgresUserRepository(db *pgxpool.Pool) model.UserRepository {
 	return &PostgresUserRepository{db: db}
 }
 
-func (r *PostgresUserRepository) Login(ctx context.Context, identity string) (*model.User, error) {
-	query := `SELECT id, name, username, email, password FROM users WHERE username = $1 OR email = $1`
-	
-	var u model.User
-	err := r.db.QueryRow(ctx, query, identity).Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.Password)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("User not found")
-		}
-		return nil, err
-	}
-	
-	return &u, nil
-}
-
 func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {
 	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users ORDER BY id DESC LIMIT $1 OFFSET $2`
 	
 	rows, err := r.db.Query(ctx, query, limit, offset)
 	if err != nil {
-		fmt.Println(err)
-		return nil, err
+		return nil, fmt.Errorf("query GetAll failed: %w", err)
 	} 
 	defer rows.Close()
 
-	var users []*model.User
+	users := make([]*model.User, 0)
 	for rows.Next() {
 		var u model.User
 		if err := rows.Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at); err != nil {
-			fmt.Println(err)
-			return nil, err
+			return nil, fmt.Errorf("scan GetAll row failed: %w", err)
 		}
 		users = append(users, &u)
 	}
+
 	if err = rows.Err(); err != nil {
-		fmt.Println(err)
-		return nil, err
+		return nil, fmt.Errorf("rows iteration error: %w", err)
 	}
-	// Return [] if nil
-	if users == nil {
-		users = make([]*model.User, 0)
-	}
-	
+
 	return users, nil
 }
 
@@ -71,7 +54,7 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, id uint) (*model.U
 	err := r.db.QueryRow(ctx, query, id).Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("User not found")
+			return nil, ErrUserNotFound
 		}
 		return nil, err
 	}
@@ -79,12 +62,72 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, id uint) (*model.U
 	return &u, nil
 }
 
-func (r *PostgresUserRepository) Create(ctx context.Context, user *model.User) error {
-	query := `INSERT INTO users (name, username, email, password) VALUES ($1, $2, $3, $4) RETURNING id`
-	
-	err := r.db.QueryRow(ctx, query, user.Name, user.Username, user.Email, user.Password).Scan(&user.ID)
+func (r *PostgresUserRepository) GetByEmailOrUsername(ctx context.Context, identifier string) (*model.User, error) {
+	query := `
+		SELECT id, name, username, email, password, created_at, updated_at, deleted_at 
+		FROM users 
+		WHERE (email = $1 OR username = $1) AND deleted_at IS NULL`
+
+	var u model.User
+	err := r.db.QueryRow(ctx, query, identifier).Scan(
+		&u.ID, &u.Name, &u.Username, &u.Email, &u.Password, &u.Created_at, &u.Updated_at, &u.Deleted_at,
+	)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	return &u, nil
+}
+
+func (r *PostgresUserRepository) GetByEmail(ctx context.Context, email string) (*model.User, error) {
+	query := `
+		SELECT id, name, username, email, created_at, updated_at, deleted_at 
+		FROM users 
+		WHERE email = $1 AND deleted_at IS NULL`
+
+	var u model.User
+	err := r.db.QueryRow(ctx, query, email).Scan(
+		&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	return &u, nil
+}
+
+func (r *PostgresUserRepository) GetByUsername(ctx context.Context, username string) (*model.User, error) {
+	query := `
+		SELECT id, name, username, email, created_at, updated_at, deleted_at 
+		FROM users 
+		WHERE username = $1 AND deleted_at IS NULL`
+
+	var u model.User
+	err := r.db.QueryRow(ctx, query, username).Scan(
+		&u.ID, &u.Name, &u.Username, &u.Email, &u.Created_at, &u.Updated_at, &u.Deleted_at,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	return &u, nil
+}
+
+func (r *PostgresUserRepository) Create(ctx context.Context, user *model.User) error {
+	query := `INSERT INTO users (name, username, email, password) VALUES ($1, $2, $3, $4) RETURNING id, created_at`
+	
+	err := r.db.QueryRow(ctx, query, user.Name, user.Username, user.Email, user.Password).Scan(&user.ID, &user.Created_at)
+	if err != nil {
+		return fmt.Errorf("create user failed: %w", err)
 	}
 	
 	return nil
@@ -99,14 +142,14 @@ func (r *PostgresUserRepository) Update(ctx context.Context, user *model.User) e
 	}
 
 	if tag.RowsAffected() == 0{
-		return errors.New("User not found to update")
+		return ErrUserNotFound
 	}
 	
 	return nil
 }
 
 func (r *PostgresUserRepository) Delete(ctx context.Context, id uint) error {
-	query := `UPDATE users SET deleted_at = CURRENT_TIMESTAMP where id = $1`
+	query := `UPDATE users SET deleted_at = CURRENT_TIMESTAMP where id = $1 AND deleted_at IS NULL`
 	
 	tag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
@@ -114,7 +157,7 @@ func (r *PostgresUserRepository) Delete(ctx context.Context, id uint) error {
 	}
 
 	if tag.RowsAffected() == 0{
-		return errors.New("User not found to delete")
+		return ErrUserNotFound
 	}
 	
 	return nil
@@ -129,7 +172,7 @@ func (r *PostgresUserRepository) PermanentDelete(ctx context.Context, id uint) e
 	}
 	
 	if commandTag.RowsAffected() == 0 {
-		return errors.New("User not found to delete")
+		return ErrUserNotFound
 	}
 	
 	return nil

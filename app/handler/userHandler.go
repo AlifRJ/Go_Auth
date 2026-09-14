@@ -2,11 +2,11 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
+	"github.com/AlifRJ/Go_Auth/app/repository"
 	"github.com/AlifRJ/Go_Auth/app/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/jwtauth/v5"
@@ -14,28 +14,19 @@ import (
 
 type UserHandler struct {
 	service *service.UserService
-	tokenAuth *jwtauth.JWTAuth
+	accessTokenAuth *jwtauth.JWTAuth
 }
 
-func NewUserHandler(s *service.UserService, tokenAuth * jwtauth.JWTAuth) *UserHandler {
-	return &UserHandler{service: s, tokenAuth: tokenAuth}
+func NewUserHandler(s *service.UserService, accessTokenAuth * jwtauth.JWTAuth) *UserHandler {
+	return &UserHandler{service: s, accessTokenAuth: accessTokenAuth}
 }
 
-// Routes
+// Routes Definition
 func (h *UserHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/v1", func(r chi.Router) {
-
-		// Public Routes
-		r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("PONG!"))
-		})
-		r.Post("/login", h.Login) 
-
-		// Protected Routes
 		r.Group(func(r chi.Router){
-			r.Use(jwtauth.Verifier(h.tokenAuth))
-			r.Use(jwtauth.Authenticator(h.tokenAuth))
-
+			r.Use(jwtauth.Verifier(h.accessTokenAuth))
+			r.Use(jwtauth.Authenticator(h.accessTokenAuth))
 			r.Get("/users", h.GetAll)
 			r.Get("/users/{id}", h.GetByID)
 			r.Post("/users", h.Create)
@@ -46,63 +37,8 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 	})
 }
 
-// Login Handler
-func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request){
-	defer r.Body.Close()
-
-	// Perform credential check
-	var body struct {
-		Identity  string `json:"identity"`
-		Password string `json:"password"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if body.Identity == "" || body.Password == "" {
-        http.Error(w, "Identity and password are required", http.StatusBadRequest)
-        return
-    }
-
-	// Get the user
-	user, err := h.service.Login(r.Context(), body.Identity, body.Password)
-	if err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
-	// Create the claims map
-	claims := map[string]any{
-		"id": user.ID,
-		"name": user.Name,
-		"username": user.Username,
-		"email": user.Email,
-	}
-
-	// Set expiration using jwtauth helper functions (e.g., expires in 1 hour)
-	jwtauth.SetExpiryIn(claims, 1*time.Hour)
-	jwtauth.SetIssuedNow(claims)
-
-	// Generate the signed JWT token string
-	_, tokenString, err := h.tokenAuth.Encode(claims)
-	if err != nil {
-		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
-		return
-	}
-
-	// Return token string to the client
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(map[string]string{
-        "token": tokenString,
-    })
-}
-
 // Get All Users
 func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	// Request Query
 	query := r.URL.Query()
 	
 	limit, _ := strconv.Atoi(query.Get("limit"))
@@ -111,37 +47,32 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	// Get Users
 	users, err := h.service.GetAll(r.Context(), limit, offset)
 	if err != nil {
-		http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch users"})
 		return
 	}
 
-	// Return users
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(users)
+	respondJSON(w, http.StatusOK, users)
 }
 
 // Get User by ID
 func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	// Request Params
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
+	id, err := parseUintParam(r, "id")
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
 	}
 
-	// Get User
-	user, err := h.service.GetByID(r.Context(), uint(id))
+	user, err := h.service.GetByID(r.Context(), id)
 	if err != nil {
-		fmt.Println(err)
-		http.Error(w, "User not found", http.StatusNotFound)
+		if errors.Is(err, repository.ErrUserNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "User not found"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Internal server error"})
 		return
 	}
 
-	// Return user
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	respondJSON(w, http.StatusOK, user)
 }
 
 // Register new User
@@ -153,33 +84,26 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
-	// Validate Request
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		fmt.Println(err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request payload"})
 		return
 	}
 
-	// Create User
 	user, err := h.service.RegisterUser(r.Context(), body.Name, body.Username, body.Email, body.Password)
 	if err != nil {
-		fmt.Print(err)
-		http.Error(w, "Failed to create user", http.StatusInternalServerError)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	// Response
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(user)
+	respondJSON(w, http.StatusCreated, user)
 }
 
 // Update User
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// Request Params
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
+	id, err := parseUintParam(r, "id")
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
 	}
 
@@ -190,56 +114,77 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
-	// Validate Request
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request payload"})
 		return
 	}
 
-	// Update User
-	user, err := h.service.UpdateUser(r.Context(), uint(id), body.Name, body.Username, body.Email, body.Password)
+	user, err := h.service.UpdateUser(r.Context(), id, body.Name, body.Username, body.Email, body.Password)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, repository.ErrUserNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "User not found"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	// Response
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	respondJSON(w, http.StatusOK, user)
 }
 
 // Soft Delete User
 func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request){
-	// Request Params
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
+	id, err := parseUintParam(r, "id")
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
 	}
 
-	// Soft Delete User
-	if err := h.service.DeleteUser(r.Context(), uint(id)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := h.service.DeleteUser(r.Context(), id); err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "User not found"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // Permanent Delete User
 func (h *UserHandler) PermanentlyDeleteUser(w http.ResponseWriter, r *http.Request){
-	// Request Params
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
+	id, err := parseUintParam(r, "id")
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
 	}
 
-	// Hard Delete User
-	if err := h.service.DeleteUserPermanently(r.Context(), uint(id)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := h.service.DeleteUserPermanently(r.Context(), id); err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "User not found"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Response & Param Helpers
+func respondJSON(w http.ResponseWriter, code int, payload any) {
+	response, _ := json.Marshal(payload)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(response)
+}
+
+func parseUintParam(r *http.Request, key string) (uint, error) {
+	valStr := chi.URLParam(r, key)
+	val, err := strconv.ParseUint(valStr, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint(val), nil
 }
