@@ -55,7 +55,7 @@ func (r *PostgresAuthRepository) VerifyRefreshToken(ctx context.Context, userID 
 		return false, err
 	}
 
-	// Cek apakah token cocok dan belum expired
+	// Check if Token Match and not Expired
 	if storedToken != token || time.Now().After(expiresAt) {
 		return false, nil
 	}

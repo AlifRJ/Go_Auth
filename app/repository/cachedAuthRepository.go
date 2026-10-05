@@ -33,12 +33,12 @@ func (r *cachedAuthRepository) blacklistKey(jti string) string {
 
 // Store Refresh Token
 func (r *cachedAuthRepository) StoreRefreshToken(ctx context.Context, userID uint, token string, ttl time.Duration) error {
-	// Save to database
+	// Save to Database
 	if err := r.authRepo.StoreRefreshToken(ctx, userID, token, ttl); err != nil {
 		return err
 	}
 
-	// Save to cache
+	// Save to Cache
 	key := r.refreshTokenKey(userID)
 	if err := r.rdb.Set(ctx, key, token, ttl).Err(); err != nil {
 		return fmt.Errorf("failed to cache refresh token: %w", err)
@@ -51,13 +51,13 @@ func (r *cachedAuthRepository) StoreRefreshToken(ctx context.Context, userID uin
 func (r *cachedAuthRepository) VerifyRefreshToken(ctx context.Context, userID uint, token string) (bool, error) {
 	key := r.refreshTokenKey(userID)
 
-	// Check in cache
+	// Check in Cache
 	storedToken, err := r.rdb.Get(ctx, key).Result()
 	if err == nil {
 		return storedToken == token, nil
 	}
 
-	// Fallback to database if cache miss
+	// Fallback to Database if Cache Miss
 	if errors.Is(err, redis.Nil) {
 		valid, err := r.authRepo.VerifyRefreshToken(ctx, userID, token)
 		if err != nil || !valid {
@@ -74,10 +74,10 @@ func (r *cachedAuthRepository) VerifyRefreshToken(ctx context.Context, userID ui
 
 // Delete Refresh Token
 func (r *cachedAuthRepository) DeleteRefreshToken(ctx context.Context, userID uint) error {
-	// Delete from database
+	// Delete from Database
 	_ = r.authRepo.DeleteRefreshToken(ctx, userID)
 
-	// Delete from cache
+	// Delete from Cache
 	key := r.refreshTokenKey(userID)
 	if err := r.rdb.Del(ctx, key).Err(); err != nil {
 		return fmt.Errorf("failed to delete refresh token from cache: %w", err)

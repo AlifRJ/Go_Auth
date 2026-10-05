@@ -8,11 +8,11 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-// CheckTokenBlacklist memeriksa apakah JTI dari JWT Access Token ada di blacklist Redis
+// CheckTokenBlacklist Checks if There are JTI and Access Token in Blacklist
 func CheckTokenBlacklist(authRepo model.AuthRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// 1. Ambil claims dari JWT context
+			// Get Claims From Context
 			_, claims, err := jwtauth.FromContext(r.Context())
 			if err != nil {
 				respondJSON(w, http.StatusUnauthorized, map[string]string{
@@ -21,7 +21,7 @@ func CheckTokenBlacklist(authRepo model.AuthRepository) func(http.Handler) http.
 				return
 			}
 
-			// 2. Ekstrak JTI (JWT ID) dari claims
+			// Extract JTI From Claims
 			jti, ok := claims["jti"].(string)
 			if !ok || jti == "" {
 				respondJSON(w, http.StatusUnauthorized, map[string]string{
@@ -30,7 +30,7 @@ func CheckTokenBlacklist(authRepo model.AuthRepository) func(http.Handler) http.
 				return
 			}
 
-			// 3. Cek status blacklist di Redis melalui AuthRepository
+			// Check Blacklist Status
 			blacklisted, err := authRepo.IsTokenBlacklisted(r.Context(), jti)
 			if err != nil {
 				respondJSON(w, http.StatusInternalServerError, map[string]string{
@@ -46,13 +46,13 @@ func CheckTokenBlacklist(authRepo model.AuthRepository) func(http.Handler) http.
 				return
 			}
 
-			// 4. Lanjutkan ke handler berikutnya jika token aman
+			// Pass to Next Handler
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
-// Helper internal untuk mengembalikan response JSON
+// JSON Response Helper 
 func respondJSON(w http.ResponseWriter, code int, payload interface{}) {
 	response, _ := json.Marshal(payload)
 	w.Header().Set("Content-Type", "application/json")

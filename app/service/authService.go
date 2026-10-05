@@ -33,20 +33,20 @@ func NewAuthService(userRepo model.UserRepository, authRepo model.AuthRepository
 }
 
 func (s *AuthService) Login(ctx context.Context, identity, password string) (string, string, *model.User, error) {
-	// 1. Cari user di UserRepository (bukan AuthRepository)
+	// Search User in repository
 	user, err := s.userRepo.GetByEmailOrUsername(ctx, identity)
 	if err != nil || user == nil {
 		return "", "", nil, ErrInvalidCredentials
 	}
 
-	// 2. Verifikasi Password
+	// Verify Password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		return "", "", nil, ErrInvalidCredentials
 	}
 
-	user.Password = "" // Clear password dari memory
+	user.Password = ""
 
-	// 3. Generate Access & Refresh Token
+	// Generate Access & Refresh Token
 	accessToken, refreshToken, err := s.generateTokenPair(ctx, user.ID, user.Name, user.Username, user.Email)
 	if err != nil {
 		return "", "", nil, err
@@ -56,29 +56,29 @@ func (s *AuthService) Login(ctx context.Context, identity, password string) (str
 }
 
 func (s *AuthService) RefreshToken(ctx context.Context, userID uint, rawRefreshToken string) (string, string, error) {
-	// 1. Verifikasi Refresh Token di Redis/DB
+	// Verify Refresh Token
 	valid, err := s.authRepo.VerifyRefreshToken(ctx, userID, rawRefreshToken)
 	if err != nil || !valid {
 		return "", "", ErrInvalidToken
 	}
 
-	// 2. Ambil data User terbaru
+	// Fetch New User Data
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return "", "", err
 	}
 
-	// 3. Terbitkan pasangan token baru (Rotation)
+	// Rotate Token
 	return s.generateTokenPair(ctx, user.ID, user.Name, user.Username, user.Email)
 }
 
 func (s *AuthService) Logout(ctx context.Context, userID uint, jti string, accessTTL time.Duration) error {
-	// 1. Hapus Refresh Token
+	// Delete Refresh Token
 	if err := s.authRepo.DeleteRefreshToken(ctx, userID); err != nil {
 		return err
 	}
 
-	// 2. Blacklist JTI milik Access Token jika ada
+	// Blacklist JTI Access Token
 	if jti != "" && accessTTL > 0 {
 		if err := s.authRepo.BlacklistAccessToken(ctx, jti, accessTTL); err != nil {
 			return err
@@ -88,7 +88,7 @@ func (s *AuthService) Logout(ctx context.Context, userID uint, jti string, acces
 	return nil
 }
 
-// Helper internal untuk pembuatan pasangan Access Token dan Refresh Token
+// Access Token dan Refresh Token Pair Access Token dan Refresh Token Helper
 func (s *AuthService) generateTokenPair(ctx context.Context, userID uint, name, username, email string) (string, string, error) {
 	// --- Access Token ---
 	accessJTI := uuid.New().String()

@@ -12,12 +12,14 @@ import (
 	"time"
 
 	"github.com/AlifRJ/Go_Auth/app/handler"
+	cmiddleware "github.com/AlifRJ/Go_Auth/app/middleware"
 	"github.com/AlifRJ/Go_Auth/app/migration"
 	"github.com/AlifRJ/Go_Auth/app/repository"
 	"github.com/AlifRJ/Go_Auth/app/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -113,7 +115,7 @@ func main() {
 
 	// Middleware
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://*", "https://*"},
+		AllowedOrigins:   []string{os.Getenv("ALLOWED_ORIGIN")},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
@@ -122,9 +124,14 @@ func main() {
   	}))
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(cmiddleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+
+	// Limit index to 5 request per second per ip address
+	r.Use(httprate.LimitBy(5, time.Second, func(r *http.Request)(string, error){
+		return httprate.CanonicalizeIP(r.RemoteAddr), nil
+	}))
 
 	// Health Check Route
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +149,7 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      r,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 	go func() {

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/AlifRJ/Go_Auth/app/middleware"
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/AlifRJ/Go_Auth/app/repository"
 	"github.com/AlifRJ/Go_Auth/app/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 	"github.com/go-chi/jwtauth/v5"
 )
 
@@ -31,15 +33,46 @@ func NewUserHandler(s *service.UserService, authRepo model.AuthRepository,access
 // Routes Definition
 func (h *UserHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/v1/users", func(r chi.Router) {
+		r.Use(jwtauth.Verifier(h.accessTokenAuth))
+		r.Use(jwtauth.Authenticator(h.accessTokenAuth))
+		r.Use(middleware.CheckTokenBlacklist(h.authRepo))
+
+		// Helper Fetch claim from JWT
+		getUserIDKey := func(r *http.Request) (string, error) {
+			_, claims, err := jwtauth.FromContext(r.Context())
+			if err != nil {
+				return httprate.CanonicalizeIP(r.RemoteAddr), nil
+			}
+			if userID, ok := claims["user_id"].(string); ok && userID != "" {
+				return userID, nil
+			}
+			return httprate.CanonicalizeIP(r.RemoteAddr), nil
+		}
+
+		// Read Group
 		r.Group(func(r chi.Router){
-			r.Use(jwtauth.Verifier(h.accessTokenAuth))
-			r.Use(jwtauth.Authenticator(h.accessTokenAuth))
-			r.Use(middleware.CheckTokenBlacklist(h.authRepo))
+			// Limit 60 request/minute
+			r.Use(httprate.LimitBy(60, time.Minute, getUserIDKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
 			
 			r.Get("/", h.GetAll)
-			r.Post("/", h.Create)
 			r.Get("/{id}", h.GetByID)
+		})
+		
+		// Create/Update Group
+		r.Group(func(r chi.Router){
+			// Limit 15 request/minute
+			r.Use(httprate.LimitBy(15, time.Minute, getUserIDKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+			
+			r.Post("/", h.Create)
 			r.Put("/{id}", h.UpdateUser)
+
+		})
+
+		// Delete Group
+		r.Group(func(r chi.Router){
+			// Limit 3 request/minute
+			r.Use(httprate.LimitBy(3, time.Minute, getUserIDKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+			
 			r.Delete("/{id}", h.DeleteUser)
 			r.Delete("/{id}/permanent", h.PermanentlyDeleteUser)
 		})

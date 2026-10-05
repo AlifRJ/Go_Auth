@@ -20,7 +20,7 @@ type TokenPayload struct {
 }
 
 type AuthRepository interface {
-	// Storage Management untuk Refresh Token
+	// Storage Management for Refresh Token
 	StoreRefreshToken(ctx context.Context, userID uint, token string, ttl time.Duration) error
 	VerifyRefreshToken(ctx context.Context, userID uint, token string) (bool, error)
 	DeleteRefreshToken(ctx context.Context, userID uint) error

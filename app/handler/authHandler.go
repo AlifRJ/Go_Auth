@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AlifRJ/Go_Auth/app/middleware"
 	"github.com/AlifRJ/Go_Auth/app/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 	"github.com/go-chi/jwtauth/v5"
 )
 
@@ -27,7 +29,6 @@ func NewAuthHandler(s *service.AuthService, userService *service.UserService, ac
 	}
 }
 
-// Routes
 func (h *AuthHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/v1", func(r chi.Router) {
 
@@ -35,26 +36,94 @@ func (h *AuthHandler) RegisterRoutes(r chi.Router) {
         	w.WriteHeader(http.StatusOK)
     	})
 
-		// Public Routes
-		r.Post("/login", h.Login) 
-		r.Post("/register", h.Register) 
-
-		// Refresh Route
-		r.Group(func(r chi.Router) {
-			r.Use(jwtauth.Verifier(h.refreshTokenAuth))
-			r.Use(jwtauth.Authenticator(h.refreshTokenAuth))
-
-			r.Post("/refresh", h.Refresh)
+		// Public Group
+		r.Group(func(r chi.Router){
+			// Limit public /v1 to 5 request per second per ip address
+			r.Use(httprate.LimitBy(5, time.Second, func(r *http.Request)(string, error){
+				return httprate.CanonicalizeIP(r.RemoteAddr), nil
+			}, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+	
+			r.Post("/login", h.Login) 
+			r.Post("/register", h.Register) 
 		})
 
-		// Protected Routes
+		// Logout Group
 		r.Group(func(r chi.Router){
 			r.Use(jwtauth.Verifier(h.accessTokenAuth))
 			r.Use(jwtauth.Authenticator(h.accessTokenAuth))
+			
+			// JTI Rate limit
+			r.Use(httprate.LimitBy(5, time.Minute, func(r *http.Request) (string, error) {
+				// Fetch token and claims from context
+				_, claims, err := jwtauth.FromContext(r.Context())
+				if err != nil {
+					return httprate.CanonicalizeIP(r.RemoteAddr), nil
+				}
 
-			r.Get("/me", h.Me)
+				// Fetch claim Subject
+				if userID, ok := claims["user_id"].(string); ok && userID != "" {
+					return userID, nil
+				}
+
+				return httprate.CanonicalizeIP(r.RemoteAddr), nil
+			}, httprate.WithLimitHandler(middleware.WriteRateLimitError)))	
+
 			r.Post("/logout", h.Logout)
 		})
+
+		// Refresh Group
+		r.Group(func(r chi.Router) {
+			r.Use(jwtauth.Verifier(h.refreshTokenAuth))
+			r.Use(jwtauth.Authenticator(h.refreshTokenAuth))
+			
+			// IP rate limit
+			r.Use(httprate.LimitBy(3, 10*time.Second, func(r *http.Request) (string, error) {
+				return httprate.CanonicalizeIP(r.RemoteAddr), nil
+			}))
+
+			// JTI Rate limit
+			r.Use(httprate.LimitBy(5, time.Minute, func(r *http.Request) (string, error) {
+				// Fetch token and claims from context
+				_, claims, err := jwtauth.FromContext(r.Context())
+				if err != nil {
+					return httprate.CanonicalizeIP(r.RemoteAddr), nil
+				}
+
+				// Fetch claim Subject
+				if jti, ok := claims["jti"].(string); ok && jti != "" {
+					return jti, nil
+				}
+
+				return httprate.CanonicalizeIP(r.RemoteAddr), nil
+			}, httprate.WithLimitHandler(middleware.WriteRateLimitError)))	
+			
+			r.Post("/refresh", h.Refresh)
+		})
+
+		// Profile Group
+		r.Group(func(r chi.Router){
+			r.Use(jwtauth.Verifier(h.accessTokenAuth))
+			r.Use(jwtauth.Authenticator(h.accessTokenAuth))
+			
+			// JTI Rate limit
+			r.Use(httprate.LimitBy(60, time.Minute, func(r *http.Request) (string, error) {
+				// Fetch token and claims from context
+				_, claims, err := jwtauth.FromContext(r.Context())
+				if err != nil {
+					return httprate.CanonicalizeIP(r.RemoteAddr), nil
+				}
+
+				// Fetch claim Subject
+				if userID, ok := claims["user_id"].(string); ok && userID != "" {
+					return userID, nil
+				}
+
+				return httprate.CanonicalizeIP(r.RemoteAddr), nil
+			}, httprate.WithLimitHandler(middleware.WriteRateLimitError)))	
+
+			r.Get("/me", h.Me)
+		})
+		
 	})
 }
 
@@ -90,6 +159,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request){
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"access_token": accessToken,
+		"refresh_token": refreshToken,
 		"user":         user,
 	})
 }
