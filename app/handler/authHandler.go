@@ -159,7 +159,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request){
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"access_token": accessToken,
-		"refresh_token": refreshToken,
 		"user":         user,
 	})
 }

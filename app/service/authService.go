@@ -99,7 +99,7 @@ func (s *AuthService) generateTokenPair(ctx context.Context, userID uint, name, 
 		"username": username,
 		"email":    email,
 	}
-	jwtauth.SetExpiryIn(accessClaims, 15*time.Minute) // Access Token berumur pendek (15 Menit)
+	jwtauth.SetExpiryIn(accessClaims, 15*time.Minute)
 	jwtauth.SetIssuedNow(accessClaims)
 
 	_, accessToken, err := s.accessTokenAuth.Encode(accessClaims)
@@ -121,7 +121,7 @@ func (s *AuthService) generateTokenPair(ctx context.Context, userID uint, name, 
 		return "", "", err
 	}
 
-	// Simpan Refresh Token di Storage (Redis + DB Fallback)
+	// Save Refresh Token to Storage
 	if err := s.authRepo.StoreRefreshToken(ctx, userID, refreshToken, refreshTTL); err != nil {
 		return "", "", err
 	}

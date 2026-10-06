@@ -34,10 +34,12 @@ A Go REST API for user registration, JWT authentication, refresh-token rotation,
 
 ```text
 .
+├── .env
+├── Dockerfile
+├── docker-compose.yml
 ├── main.go
 ├── go.mod
 ├── go.sum
-├── Dockerfile
 ├── README.md
 ├── app/
 │   ├── handler/
@@ -97,6 +99,7 @@ Create a `.env` file, or provide these values through the environment:
 
 ```env
 APP_PORT=8080
+ALLOWED_ORIGIN=http://localhost:3000
 DB_HOST=localhost
 DB_DATABASE=postgres
 DB_PORT=5432
@@ -109,7 +112,13 @@ ACCESS_SECRET_KEY=your-access-token-secret
 REFRESH_SECRET_KEY=your-refresh-token-secret
 ```
 
-`ACCESS_SECRET_KEY` and `REFRESH_SECRET_KEY` are required. The application exits during startup if PostgreSQL, Redis, or either JWT secret is unavailable.
+`ACCESS_SECRET_KEY` and `REFRESH_SECRET_KEY` are required. `ALLOWED_ORIGIN` is used for CORS and should match the frontend origin you want to allow. The application exits during startup if PostgreSQL, Redis, or either JWT secret is unavailable.
+
+You can start from the bundled `.env-example` file:
+
+```bash
+cp .env-example .env
+```
 
 ---
 
@@ -122,19 +131,36 @@ REFRESH_SECRET_KEY=your-refresh-token-secret
 - Redis installed and running
 - A PostgreSQL database and Redis instance accessible using the configured host and port
 
-### Installation
+### Option 1: Local Development
 
 ```bash
 go mod download
-```
-
-### Run the API
-
-```bash
 go run main.go
 ```
 
 The server listens on `APP_PORT` (normally `8080`).
+
+### Option 2: Docker Compose
+
+This repository includes a `docker-compose.yml` file that starts PostgreSQL, Redis, and the Go API together.
+
+```bash
+docker compose up --build
+```
+
+The app will be available at `http://localhost:8080`, PostgreSQL at `localhost:5432`, and Redis at `localhost:6379`.
+
+To stop everything:
+
+```bash
+docker compose down
+```
+
+To remove the persisted database and Redis volumes:
+
+```bash
+docker compose down -v
+```
 
 ---
 
@@ -153,10 +179,10 @@ The health endpoint is available at `/health`. Authentication and user routes ar
 
 ### Protected Endpoints
 
-Protected routes require a Bearer token in the `Authorization` header:
+Protected routes require a bearer token in the `Authorization` header:
 
 ```http
-Authorization: Bearer <token>
+Authorization: Bearer <access_token>
 ```
 
 | Method | Endpoint                   | Description                     |
@@ -194,7 +220,7 @@ Content-Type: application/json
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "<access_token>",
   "user": {
     "id": 1,
     "name": "John Doe",
@@ -204,7 +230,7 @@ Content-Type: application/json
 }
 ```
 
-The response also sets an HTTP-only `refresh_token` cookie scoped to `/v1`. Use the `access_token` as the `Authorization: Bearer <token>` header for protected endpoints.
+The response also sets an HTTP-only `refresh_token` cookie scoped to `/v1`. Use the `access_token` in the `Authorization: Bearer <access_token>` header for protected endpoints.
 
 ### Refresh and Logout
 
@@ -212,7 +238,7 @@ Refresh tokens are stored in PostgreSQL and Redis. The refresh endpoint validate
 
 ```http
 POST /v1/refresh
-Authorization: Bearer <refresh-token>
+Authorization: Bearer <access_token>
 Cookie: refresh_token=<refresh-token>
 ```
 
@@ -226,7 +252,7 @@ Logout deletes the stored refresh token, blacklists the access-token JTI until i
 
 ```http
 POST /v1/users/
-Authorization: Bearer <token>
+Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
 
